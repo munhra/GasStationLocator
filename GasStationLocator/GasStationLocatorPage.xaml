@@ -10,5 +10,20 @@
             IsShowingUser="true"
             MapType="Hybrid"
 		/>
-    </StackLayout>
+		<Picker Title="Escolha o raio da busca em Metros" SelectedIndexChanged="OnPickerSelectedIndexChanged">
+			<Picker.Items>
+				<x:String>500</x:String>
+				<x:String>1000</x:String>
+				<x:String>2000</x:String>
+				<x:String>5000</x:String>
+				<x:String>10000</x:String>
+				<x:String>20000</x:String>
+				<x:String>30000</x:String>
+			</Picker.Items>
+		</Picker>
+		<Button Text="Clear all"
+            HorizontalOptions="Center"
+            VerticalOptions="CenterAndExpand"
+            Clicked="OnButtonClearAllClicked" />
+	</StackLayout>
 </ContentPage>

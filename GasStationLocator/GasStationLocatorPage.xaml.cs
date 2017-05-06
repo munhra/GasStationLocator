@@ -1,10 +1,12 @@
 ﻿using Xamarin.Forms;
 using Xamarin.Forms.Maps;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using System.Net;
 using System.IO;
 using System;
+using System.Globalization;
 
 using Plugin.Geolocator;
 
@@ -14,6 +16,14 @@ namespace GasStationLocator
 
 	public partial class GasStationLocatorPage : ContentPage
 	{
+
+		private Position lastGPSPosition = new Position(-23.108631, -47.226678);
+		private String searchRadius = "500";
+
+		private List<Pin> pinList = new List<Pin>(); 
+
+
+
 		public GasStationLocatorPage()
 		{
 			System.Diagnostics.Debug.WriteLine("Initialize component");
@@ -23,13 +33,27 @@ namespace GasStationLocator
 				System.Diagnostics.Debug.WriteLine("Task call back " + t.Result.Latitude + ", " + t.Result.Longitude);
 				Device.BeginInvokeOnMainThread(() =>
 				{
+					lastGPSPosition = t.Result;
 					setMapUserPosition(t.Result);
+
+				});
+
+				fetchNearGasStations(t.Result,searchRadius).ContinueWith((arg) =>
+				{
+					System.Diagnostics.Debug.WriteLine("fetchNearGasStations result " + arg.Result.results.Count);
+					Device.BeginInvokeOnMainThread(() =>
+					{
+						for (int i = 0; i < arg.Result.results.Count; i++)
+						{
+							PlaceGasStation gasStation = (PlaceGasStation)arg.Result.results[i];
+							var lat = gasStation.geometry.location.lat;
+							var lng = gasStation.geometry.location.lng;
+							addPin(lat, lng, gasStation.name, gasStation.vicinity);
+						}	
+
+					});
 				});
 			});
-
-			fetchNearGasStations();
-			//testJsonSerialization();
-			addPin();
 		}
 
 		public void testJsonSerialization()
@@ -41,8 +65,6 @@ namespace GasStationLocator
 			System.Diagnostics.Debug.WriteLine("Number of gas stations "+gasStationList.gasStation.Count);
 		}
 			
-			
-
 		public async Task<Position> getUserPosition()
 		{
 			System.Diagnostics.Debug.WriteLine("getUserPosition");
@@ -75,24 +97,89 @@ namespace GasStationLocator
 			this.MyMap.MoveToRegion(MapSpan.FromCenterAndRadius(new Position(-23.108631, -47.226678), Distance.FromKilometers(1)));
 		}
 
-		public void addPin()
+		public void addPin(double lat, double lng, String name, String address)
 		{
-			var position = new Position(-23.099231, -47.227770);
+			var position = new Position(lat, lng);
 			var pin = new Pin
 			{
 				Type = PinType.Place,
 				Position = position,
-				Label = "Gas Station XXXX",
-				Address = "Oil Avenue"
+				Label = name,
+				Address = address
 			};
+			pinList.Add(pin);
 			this.MyMap.Pins.Add(pin);
 		}
 
-		public async Task fetchNearGasStations()
+		public void OnButtonClearAllClicked(object sender, EventArgs args)
 		{
+			//for (int i = 0; i < pinList.Count; i++)
+
+			Device.BeginInvokeOnMainThread(() => 
+			{
+				System.Diagnostics.Debug.WriteLine("Remove all pins " + pinList.Count);
+				foreach (Pin pin in pinList)
+				{
+					MyMap.Pins.Remove(pin);
+				}
+			});
+		}
+
+		public void OnPickerSelectedIndexChanged(object sender, EventArgs args)
+		{
+			System.Diagnostics.Debug.WriteLine("Picker selected");
+
+			Picker picker = (Picker)sender;
+			int selectedIndex = picker.SelectedIndex;
+
+			if (selectedIndex == -1)
+			{
+				return;
+			}
+
+			searchRadius = picker.Items[selectedIndex];
+
+
+			fetchNearGasStations(lastGPSPosition, searchRadius).ContinueWith((arg) =>
+				{
+					System.Diagnostics.Debug.WriteLine("fetchNearGasStations result " + arg.Result.results.Count);
+					
+					Device.BeginInvokeOnMainThread(() =>
+					{
+					
+						for (int i = 0; i<arg.Result.results.Count; i++)
+						{
+							PlaceGasStation gasStation = (PlaceGasStation)arg.Result.results[i];
+							var lat = gasStation.geometry.location.lat;
+							var lng = gasStation.geometry.location.lng;
+							addPin(lat, lng, gasStation.name, gasStation.vicinity);
+						}	
+
+					});
+				});
+
+		}
+
+		public async Task<PlacesGasStationList> fetchNearGasStations(Position position, String searchRadius)
+		{
+
+			NumberFormatInfo nfi = new NumberFormatInfo();
+			nfi.NumberGroupSeparator = ".";
+				
+
+			double latitude = Convert.ToDouble(position.Latitude, CultureInfo.InvariantCulture);
+			double longitude = Convert.ToDouble(position.Longitude, CultureInfo.InvariantCulture);
+
+			var requestUrlString = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?" +
+				"location="+latitude.ToString(nfi)+","+longitude.ToString(nfi)+
+			                        "&radius="+searchRadius+
+			                        "&type=gas_station&key=AIzaSyBm6WWkdlH2_yundiSdg0bUmeE0nJqLGS8";
+
+			System.Diagnostics.Debug.WriteLine("Request String" + requestUrlString);
+
 			HttpWebRequest request = 
 				(HttpWebRequest)HttpWebRequest.Create(
-					new Uri("https://quarkbackend.com/getfile/rafael-munhoz/gasstation-json"));
+					new Uri(requestUrlString));
 
 			request.ContentType = "application/json";
 			request.Method = "GET";
@@ -107,27 +194,20 @@ namespace GasStationLocator
 
 					//using (JsonTextReader jsonReader = new JsonTextReader(textReader))
 					//{
-						JsonSerializer serializer = new JsonSerializer();
-						//serializer.Deserialize<MapPage>(jsonReader);
-						var jsonStr = textReader.ReadToEnd();
-						System.Diagnostics.Debug.WriteLine(jsonStr);
-						var gasStationList = (GasStationList)JsonConvert.DeserializeObject<GasStationList>(jsonStr);
-						//System.Diagnostics.Debug.WriteLine("First element " + gasStationList.gasStation[0].name);
-						System.Diagnostics.Debug.WriteLine("Element count " + gasStationList.gasStation.Count);
+					JsonSerializer serializer = new JsonSerializer();
+					//serializer.Deserialize<MapPage>(jsonReader);
+					var jsonStr = textReader.ReadToEnd();
+					System.Diagnostics.Debug.WriteLine(jsonStr);
+					var gasStationList = (PlacesGasStationList)JsonConvert.DeserializeObject<PlacesGasStationList>(jsonStr);
+					//System.Diagnostics.Debug.WriteLine("First element " + gasStationList.gasStation[0].name);
+					System.Diagnostics.Debug.WriteLine("Element count " + gasStationList.results.Count);
 					//}
 
-
+					return gasStationList;
 					//JsonSerializer serializer = new JsonSerializer();
 					//serializer.Deserialize<T>()
-
-
-
 				}
-			
-			
 			}
-
-		
 		}
 	}
 }

@@ -42,6 +42,8 @@
     <Compile Include="MapPage.cs" />
     <Compile Include="GasStation.cs" />
     <Compile Include="GasStationList.cs" />
+    <Compile Include="PlacesGasStationList.cs" />
+    <Compile Include="PlaceGasStation.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Xamarin.Forms.Core">
